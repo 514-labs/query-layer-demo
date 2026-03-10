@@ -1,215 +1,115 @@
-# TypeScript MCP Template
+# Query Layer Demo
 
-This template provides a complete example of building AI-powered chat-over-data applications with MooseStack and the Model Context Protocol (MCP).
+A working example of MooseStack's [Query Layer](https://docs.fiveonefour.com/moosestack/reference/query-layer) — define metrics, dimensions, and filters once in a semantic query model, then consume them from REST APIs, MCP tools, and AI chat simultaneously.
 
-This README covers the **quickstart** — getting the template running locally. For a full guided walkthrough including data modeling, loading data from S3, customizing the frontend, and deploying to production, see the [Chat in Your App Tutorial](https://docs.fiveonefour.com/guides/chat-in-your-app/tutorial).
+Uses Amazon Customer Reviews (~25M rows) as sample data, but the pattern applies to any dataset.
 
-## Overview
+## What This Demonstrates
 
-This is a pnpm monorepo containing two independent applications that work together:
+**One query model powers three interfaces:**
 
-```text
-Next.js App (Chat UI -> API Route -> MCP Client)
-    | HTTP + Bearer Token |
-MooseStack Service (Tools -> MCP Server -> ClickHouse)
+```
+defineQueryModel(reviewMetrics)
+    ├── buildQuery()         → REST API  → Dashboard charts + Query Builder UI
+    ├── registerModelTools() → MCP tool  → AI chat (Claude)
+    └── createModelTool()    → AI SDK    → (available for custom integrations)
 ```
 
-- **`packages/moosestack-service/`** — MooseStack backend with a custom MCP server, built using [BYO API](https://docs.fiveonefour.com/moosestack/app-api-frameworks) and Express
-- **`packages/web-app/`** — Next.js frontend with a pre-configured AI chat interface
+- **`app/query-models/review-metrics.ts`** — Single source of truth for 12 metrics, 7 dimensions, 8 filters
+- **`app/apis/reviews.ts`** — `/reviews/schema` and `/reviews/metrics` REST endpoints powered by `buildQuery()`
+- **`app/apis/mcp.ts`** — `query_review_metrics` MCP tool auto-registered via `registerModelTools()`
+- **Query Builder UI** — Schema-driven frontend that dynamically renders metric/dimension/filter chips from the `/reviews/schema` endpoint
+
+Adding a metric or filter to `reviewMetrics` automatically appears in all three interfaces — no other files need updating.
 
 ## Prerequisites
 
 - Node.js v20+ and pnpm v8+
 - Docker Desktop (running)
 - Moose CLI: `bash -i <(curl -fsSL https://fiveonefour.com/install.sh) moose`
-- [Anthropic API key](https://console.anthropic.com/)
+- [Anthropic API key](https://console.anthropic.com/) (for chat features)
 
-## Getting Started
-
-Initiate your project:
-
-```bash
-moose init <project-name> typescript-mcp
-cd <project-name>
-```
-
-Install dependencies for both applications:
+## Setup
 
 ```bash
 pnpm install
 ```
 
-Copy example environment variables:
+Copy environment templates:
 
 ```bash
 cp packages/moosestack-service/.env.{example,local}
 cp packages/web-app/.env.{example,local}
 ```
 
-Create API Key authentication tokens:
+Generate API authentication tokens:
 
 ```bash
 cd packages/moosestack-service
-moose generate hash-token # use output for the API Key & Token below
+moose generate hash-token
 ```
 
-Set environment variables. `moose generate hash-token` outputs a key pair — the hash goes to the backend and the token goes to the frontend:
+Set environment variables using the output:
 
 | Variable | File | Value |
 | --- | --- | --- |
-| `MCP_API_KEY` | `packages/moosestack-service/.env.local` | `ENV API Key` (hash) from `moose generate hash-token` |
-| `MCP_API_TOKEN` | `packages/web-app/.env.local` | `Bearer Token` from `moose generate hash-token` |
+| `MCP_API_KEY` | `packages/moosestack-service/.env.local` | `ENV API Key` (hash) |
+| `MCP_API_TOKEN` | `packages/web-app/.env.local` | `Bearer Token` |
 | `ANTHROPIC_API_KEY` | `packages/web-app/.env.local` | Your [Anthropic API key](https://console.anthropic.com/) |
 
-Start both services:
+## Run
 
 ```bash
 pnpm dev
 ```
 
-Or start services individually:
+This starts both the MooseStack backend (port 4000) and the Next.js frontend (port 3000).
+
+## Load Sample Data
+
+With the dev server running, load the Amazon Customer Reviews dataset from S3:
 
 ```bash
-pnpm dev:moose    # Start MooseStack service only
-pnpm dev:web      # Start web app only
+moose query "
+INSERT INTO local.AmazonReview
+SELECT * FROM s3(
+  'https://datasets-documentation.s3.eu-west-3.amazonaws.com/amazon_reviews/amazon_reviews_2015.snappy.parquet',
+  'Parquet'
+);
+"
 ```
 
-Access the application at `http://localhost:3000`. Click the chat icon in the bottom-right corner to open the chat panel.
-
-### Local Development Ports
-
-Make sure the following ports are free before running `pnpm dev`. If any are in use, you can change them in `packages/moosestack-service/moose.config.toml`.
-
-| Service              | Port  |
-| -------------------- | ----- |
-| Next.js web app      | 3000  |
-| MooseStack HTTP/MCP  | 4000  |
-| Management API       | 5001  |
-| Temporal             | 7233  |
-| Temporal UI          | 8080  |
-| ClickHouse HTTP      | 18123 |
-| ClickHouse native    | 9000  |
-
-### Agent Harness
-
-This template ships with an agent harness — a set of tools that give your AI copilot full context over the project:
-
-- **[MooseDev MCP](https://docs.fiveonefour.com/moosestack/moosedev-mcp)** — MooseStack's built-in MCP server for querying your local database and inspecting your data pipeline (requires `pnpm dev:moose` running)
-- **[Context7](https://github.com/upstash/context7)** — serves up-to-date MooseStack documentation to your copilot
-- **[ClickHouse Best Practices Skill](https://github.com/514-labs/agent-skills)** — optimized query and schema guidance for ClickHouse
-
-The MCP servers are pre-configured in `.mcp.json` and most AI copilots (Claude Code, Cursor, etc.) pick them up automatically. To install the skill:
+Verify the data loaded:
 
 ```bash
-npx skills add https://github.com/514-labs/agent-skills --skill moosestack-clickhouse-best-practices
+moose query "SELECT count() FROM AmazonReview"
+# Expected: ~25.4 million rows
 ```
 
-## Next Steps
+## Explore
 
-For a full walkthrough of data modeling, loading data, customizing the frontend, and deploying to production, see the [Chat in Your App Tutorial](https://docs.fiveonefour.com/guides/chat-in-your-app/tutorial).
+| URL | What it is |
+| --- | --- |
+| `http://localhost:3000` | Dashboard with review charts |
+| `http://localhost:3000/builder` | Interactive query builder |
+| Chat panel (bottom-right) | AI chat powered by the same query model |
+| `http://localhost:4000/reviews/schema` | Query model schema (JSON) |
+| `http://localhost:4000/reviews/metrics?metrics=totalReviews,avgRating&dimensions=product_category` | REST query |
 
-## Connecting External MCP Clients
+## Key Files
 
-This template exposes a custom MCP server at `/tools` (separate from MooseStack's [built-in MCP server](https://docs.fiveonefour.com/moosestack/moosedev-mcp) at `/mcp`). You can connect external MCP clients to it:
-
-### Claude Code
-
-```bash
-claude mcp add --transport http moose-tools http://localhost:4000/tools --header "Authorization: Bearer <your_bearer_token>"
-```
-
-### Other clients (mcp.json)
-
-Create or update your `mcp.json` configuration file:
-
-```json
-{
-  "mcpServers": {
-    "moose-tools": {
-      "transport": "http",
-      "url": "http://localhost:4000/tools",
-      "headers": {
-        "Authorization": "Bearer <your_bearer_token>"
-      }
-    }
-  }
-}
-```
-
-Replace `<your_bearer_token>` with the Bearer Token generated by `moose generate hash-token`.
-
-## Troubleshooting
-
-### Port Already in Use
-
-If port 4000 is already in use, update `packages/moosestack-service/moose.config.toml`:
-
-```toml
-[http_server_config]
-port = 4001
-```
-
-### "MCP_SERVER_URL environment variable is not set"
-
-This is pre-configured in `packages/web-app/.env.development` for local dev. If you've deleted that file, recreate it:
-
-```dotenv
-MCP_SERVER_URL=http://localhost:4000
-```
-
-### "Unauthorized" or 401 Errors
-
-- Verify `MCP_API_KEY` in `packages/moosestack-service/.env.local` matches the hash from `moose generate hash-token`
-- Confirm `MCP_API_TOKEN` in `packages/web-app/.env.local` is the Bearer Token (not the hash)
-- Check Authorization headers in network requests
-
-### CORS Errors
-
-- Ensure the chat UI calls `/api/chat` (same-origin)
-- Backend requests to MooseStack use server-side Bearer token
-
-### Chat Panel Missing
-
-- Check browser console for errors
-- Verify `ChatLayoutWrapper` wraps the app in `layout.tsx`
-- Confirm shadcn/ui components are installed
-
-### "ANTHROPIC_API_KEY not set"
-
-- Add your key to `packages/web-app/.env.local`
-- Restart the Next.js dev server (env vars load on startup)
-
-### TypeScript Errors
-
-Make sure all dependencies are installed:
-
-```bash
-pnpm install
-```
-
-## Extending This Template
-
-### Adding More Tools
-
-Register additional tools in `packages/moosestack-service/app/apis/mcp.ts` using `server.registerTool()`. Each tool needs a name, title, description, input/output schemas (using Zod), and an async handler function.
-
-### Adding More Data Models
-
-Create additional data models in `packages/moosestack-service/app/ingest/models.ts` by defining interfaces and creating OlapTable instances.
-
-## Security Features
-
-This template implements several security measures for safe database querying:
-
-- **Readonly SQL Queries**: enforced by the ClickHouse client. For additional safety, you can also provision a [read-only ClickHouse user](https://clickhouse.com/docs/en/operations/settings/permissions-for-queries)
-- **Row Limiting**: Results are capped at a default of 100 rows, configurable up to 1000
-- **Error Handling**: Security errors returned through MCP protocol without exposing internals
-
-Before deploying to production, consider adding rate limiting, query timeouts, audit logging, IP whitelisting, and TLS/HTTPS.
+| File | Role |
+| --- | --- |
+| `packages/moosestack-service/app/ingest/models.ts` | Data model (`AmazonReview` interface + `OlapTable`) |
+| `packages/moosestack-service/app/query-models/review-metrics.ts` | Semantic query model (`defineQueryModel`) |
+| `packages/moosestack-service/app/apis/reviews.ts` | REST endpoints (`/reviews/schema`, `/reviews/metrics`) |
+| `packages/moosestack-service/app/apis/mcp.ts` | MCP server with `registerModelTools()` |
+| `packages/web-app/src/components/report-builder/` | Query builder UI (schema-driven) |
+| `packages/web-app/src/features/dashboard/review-charts.tsx` | Dashboard charts |
 
 ## Learn More
 
+- [Query Layer Reference](https://docs.fiveonefour.com/moosestack/reference/query-layer)
+- [Semantic Layer Guide](https://docs.fiveonefour.com/moosestack/apis/semantic-layer)
 - [Chat in Your App Tutorial](https://docs.fiveonefour.com/guides/chat-in-your-app/tutorial)
 - [MooseStack Documentation](https://docs.fiveonefour.com)
-- [Model Context Protocol](https://modelcontextprotocol.io)
-- [MCP SDK (@modelcontextprotocol/sdk)](https://github.com/modelcontextprotocol/typescript-sdk)

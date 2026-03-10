@@ -16,8 +16,15 @@ import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod/v3";
-import { WebApp, getMooseUtils, MooseUtils } from "@514labs/moose-lib";
+import {
+  WebApp,
+  getMooseUtils,
+  MooseUtils,
+  registerModelTools,
+  type QueryModelBase,
+} from "@514labs/moose-lib";
 import { createAuthMiddleware } from "@514labs/express-pbkdf2-api-key-auth";
+import { reviewMetrics } from "../query-models/review-metrics";
 
 function clickhouseReadonlyQuery(
   client: MooseUtils["client"],
@@ -424,6 +431,14 @@ const serverFactory = (mooseUtils: MooseUtils) => {
         };
       }
     },
+  );
+
+  // Register query model tools — each named model becomes an MCP tool
+  // with auto-generated schema, SQL generation, and readonly execution.
+  registerModelTools(
+    server,
+    [reviewMetrics] as unknown as QueryModelBase[],
+    mooseUtils.client.query,
   );
 
   return server;
